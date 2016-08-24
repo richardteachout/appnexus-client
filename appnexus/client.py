@@ -24,10 +24,7 @@ class AppNexusClient(object):
         self.token = None
         self.debug = debug
         self.representation = representation
-        if test:
-            self.base_url = self.test_url
-        else:
-            self.base_url = self.url
+        self.test = test
 
         self._generate_services()
 
@@ -39,6 +36,10 @@ class AppNexusClient(object):
         :param kwargs: query parameters
         :return: The uri of the request
         """
+        if self.test:
+            base_url = self.test_url
+        else:
+            base_url = self.url
         for key, value in parameters.items():
             if isinstance(value, (list, tuple)):
                 parameters[key] = ",".join([str(member) for member in value])
@@ -47,9 +48,9 @@ class AppNexusClient(object):
                                     for key, value in parameters.items()]
         query_parameters = "&".join(list_formated_parameters)
         if query_parameters:
-            uri = "{}{}?{}".format(self.base_url, service, query_parameters)
+            uri = "{}{}?{}".format(base_url, service, query_parameters)
         else:
-            uri = "{}{}".format(self.base_url, service)
+            uri = "{}{}".format(base_url, service)
         return uri
 
     # shiro: Coverage is disabled for this function because it's mocked and it
@@ -97,7 +98,8 @@ class AppNexusClient(object):
         if None in self.credentials.values():
             raise RuntimeError("Invalid Credentials")
         credentials = dict(auth=self.credentials)
-        response = requests.post(self.base_url + "auth",
+        url = self.test_url if self.test else self.url
+        response = requests.post(url + "auth",
                                  json=credentials)
         data = response.json()["response"]
         if "error_id" in data:
@@ -137,6 +139,10 @@ class AppNexusClient(object):
         """create a new AppNexus object"""
         return self._send(requests.post, service, json, **kwargs)
 
+    def delete(self, service, *ids):
+        """delete an AppNexus object"""
+        return self._send(requests.delete, service, id=ids)
+
     def append(self, service, json, **kwargs):
         kwargs.update({"append": True})
         return self.modify(service, json, **kwargs)
@@ -151,8 +157,15 @@ class AppNexusClient(object):
         args.update(kwargs)
         return Cursor(self, service, representation, **args)
 
-    def connect(self, username, password):
+    def connect(self, username, password, debug=None, test=None,
+                representation=None):
         self.credentials = {"username": username, "password": password}
+        if test is not None:
+            self.test = test
+        if debug is not None:
+            self.debug = debug
+        if representation is not None:
+            self.representation = representation
 
     def _generate_services(self):
         for service in services_list:
@@ -205,11 +218,15 @@ class Service(object):
     def create(self, json, **kwargs):
         return self.client.create(self.service, json, **kwargs)
 
+    def delete(self, *args):
+        return self.client.delete(self.service, *args)
+
+
 client = AppNexusClient()
 
 
-def connect(username, password):
-    return client.connect(username, password)
+def connect(username, password, debug=None, test=None):
+    return client.connect(username, password, debug, test)
 
 
 def find(service, arguments=None, representation=None, **kwargs):
